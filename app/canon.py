@@ -35,11 +35,12 @@ def call_id_for(dossier_id: str, fingerprint: str) -> str:
     return "call_" + sha256_hex(f"{dossier_id}:{fingerprint}")[:32]
 
 
-def proposal_digest(dossier_id: str, action: str, payload: Any, evidence: Any) -> str:
+def input_digest(dossier_id: str, action: str, target: Any, payload: Any, evidence: Any) -> str:
     return sha256_hex(
         canonical_json({
             "dossierId": dossier_id,
             "action": action,
+            "target": target,
             "payload": payload,
             "evidence": evidence,
         })

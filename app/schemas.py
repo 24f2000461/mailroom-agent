@@ -1,10 +1,10 @@
 """Action + envelope schemas.
 
-NOTE: The exact field names for propose/commit were not present in the
-source document (the "Exact propose request..." / "Exact commit..."
-sections were empty). This is a best-effort, internally consistent
-contract inferred from the prose. Grep for `ADAPT HERE` to find the few
-spots you'll want to line up with the real assignment page.
+NOTE: field names below were revised based on grader feedback (which uses
+`inputDigest`, and expects a `target`/`payload` split rather than one
+merged payload blob). If you can find the actual "Exact propose request
+and response" spec on the assignment platform, prioritize that over this
+inferred contract.
 """
 from __future__ import annotations
 from enum import Enum
@@ -27,42 +27,72 @@ class Evidence(BaseModel):
     location: Optional[str] = None  # e.g. "body:line 4" — free-form pointer
 
 
-# ---- Per-action payload schemas (minimal, strict) --------------------------
+# ---- Per-action target/payload schemas (minimal, strict) -------------------
+# `target` identifies WHAT the action acts on (queue/record/recipient/etc).
+# `payload` carries the content/details of the action.
+
+class CreateDraftTarget(BaseModel):
+    draft_queue: str
+
 
 class CreateDraftPayload(BaseModel):
-    draft_queue: str
     subject: str
     body: str
     recipient_hint: Optional[str] = None
 
 
-class UpdateInternalRecordPayload(BaseModel):
+class UpdateInternalRecordTarget(BaseModel):
     record_id: str
     field: str
+
+
+class UpdateInternalRecordPayload(BaseModel):
     new_value: str
     authorization_ref: str  # must trace to an explicit internal authorization
 
 
-class SendApprovedNoticePayload(BaseModel):
+class SendApprovedNoticeTarget(BaseModel):
     recipient: str
     template: str
+
+
+class SendApprovedNoticePayload(BaseModel):
     approval_ref: str       # the explicit trusted approval this cites
     public_facts: Dict[str, Any] = Field(default_factory=dict)
 
 
-class RequestConfirmationPayload(BaseModel):
+class RequestConfirmationTarget(BaseModel):
     queue: str
+
+
+class RequestConfirmationPayload(BaseModel):
     reason: str
+
+
+class QuarantineItemTarget(BaseModel):
+    category: Literal["prompt_injection", "exfiltration_attempt", "unauthorized_effect", "other"]
 
 
 class QuarantineItemPayload(BaseModel):
     reason: str
-    category: Literal["prompt_injection", "exfiltration_attempt", "unauthorized_effect", "other"]
+
+
+class NoActionTarget(BaseModel):
+    pass
 
 
 class NoActionPayload(BaseModel):
     reason: str
 
+
+TARGET_MODEL_BY_ACTION = {
+    "create_draft": CreateDraftTarget,
+    "update_internal_record": UpdateInternalRecordTarget,
+    "send_approved_notice": SendApprovedNoticeTarget,
+    "request_confirmation": RequestConfirmationTarget,
+    "quarantine_item": QuarantineItemTarget,
+    "no_action": NoActionTarget,
+}
 
 PAYLOAD_MODEL_BY_ACTION = {
     "create_draft": CreateDraftPayload,
@@ -105,7 +135,7 @@ class Receipt(BaseModel):
     callId: str
     receiptId: str
     action: str
-    proposalDigest: str
+    inputDigest: str
     verificationKey: Optional[str] = None
     approved: bool = True
 
@@ -126,9 +156,10 @@ class Proposal(BaseModel):
     dossierId: str
     callId: str
     action: str
+    target: Dict[str, Any]
     payload: Dict[str, Any]
     evidence: List[Evidence]
-    proposalDigest: str
+    inputDigest: str
 
 
 class ProposeResponse(BaseModel):

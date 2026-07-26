@@ -48,9 +48,10 @@ def init_db():
                 fingerprint TEXT NOT NULL,
                 call_id TEXT NOT NULL,
                 action TEXT NOT NULL,
+                target_json TEXT NOT NULL,
                 payload_json TEXT NOT NULL,
                 evidence_json TEXT NOT NULL,
-                proposal_digest TEXT NOT NULL,
+                input_digest TEXT NOT NULL,
                 created_at TEXT NOT NULL DEFAULT (datetime('now')),
                 PRIMARY KEY (dossier_id, fingerprint)
             );
@@ -89,31 +90,32 @@ def init_db():
 def get_cached_decision(dossier_id: str, fingerprint: str) -> Optional[Dict[str, Any]]:
     with tx() as conn:
         row = conn.execute(
-            "SELECT call_id, action, payload_json, evidence_json, proposal_digest "
+            "SELECT call_id, action, target_json, payload_json, evidence_json, input_digest "
             "FROM dossier_decisions WHERE dossier_id=? AND fingerprint=?",
             (dossier_id, fingerprint),
         ).fetchone()
     if not row:
         return None
-    call_id, action, payload_json, evidence_json, digest = row
+    call_id, action, target_json, payload_json, evidence_json, digest = row
     return {
         "callId": call_id,
         "action": action,
+        "target": json.loads(target_json),
         "payload": json.loads(payload_json),
         "evidence": json.loads(evidence_json),
-        "proposalDigest": digest,
+        "inputDigest": digest,
     }
 
 
 def put_cached_decision(dossier_id: str, fingerprint: str, call_id: str, action: str,
-                         payload: Dict[str, Any], evidence: List[Dict[str, Any]],
-                         digest: str) -> None:
+                         target: Dict[str, Any], payload: Dict[str, Any],
+                         evidence: List[Dict[str, Any]], digest: str) -> None:
     with tx() as conn:
         conn.execute(
             "INSERT OR IGNORE INTO dossier_decisions "
-            "(dossier_id, fingerprint, call_id, action, payload_json, evidence_json, proposal_digest) "
-            "VALUES (?,?,?,?,?,?,?)",
-            (dossier_id, fingerprint, call_id, action, json.dumps(payload),
+            "(dossier_id, fingerprint, call_id, action, target_json, payload_json, evidence_json, input_digest) "
+            "VALUES (?,?,?,?,?,?,?,?)",
+            (dossier_id, fingerprint, call_id, action, json.dumps(target), json.dumps(payload),
              json.dumps(evidence), digest),
         )
 

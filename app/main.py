@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
 from . import store
-from .canon import canonical_json, content_fingerprint, call_id_for, proposal_digest
+from .canon import canonical_json, content_fingerprint, call_id_for, input_digest
 from .llm import decide
 from .schemas import ProposeRequest, CommitRequest, ALLOWED_ACTIONS
 
@@ -76,24 +76,27 @@ def _handle_propose(raw: Dict[str, Any]):
         else:
             raw_decision = decide(d.dossierId, body)
             call_id = call_id_for(d.dossierId, fp)
-            digest = proposal_digest(d.dossierId, raw_decision["action"],
-                                      raw_decision["payload"], raw_decision["evidence"])
+            digest = input_digest(d.dossierId, raw_decision["action"], raw_decision["target"],
+                                   raw_decision["payload"], raw_decision["evidence"])
             store.put_cached_decision(d.dossierId, fp, call_id, raw_decision["action"],
-                                       raw_decision["payload"], raw_decision["evidence"], digest)
+                                       raw_decision["target"], raw_decision["payload"],
+                                       raw_decision["evidence"], digest)
             decision = {
                 "callId": call_id,
                 "action": raw_decision["action"],
+                "target": raw_decision["target"],
                 "payload": raw_decision["payload"],
                 "evidence": raw_decision["evidence"],
-                "proposalDigest": digest,
+                "inputDigest": digest,
             }
         proposals.append({
             "dossierId": d.dossierId,
             "callId": decision["callId"],
             "action": decision["action"],
+            "target": decision["target"],
             "payload": decision["payload"],
             "evidence": decision["evidence"],
-            "proposalDigest": decision["proposalDigest"],
+            "inputDigest": decision["inputDigest"],
         })
 
     store.put_evaluation(req.evaluationId, dossier_set_hash, proposals)
@@ -107,7 +110,7 @@ def _handle_propose(raw: Dict[str, Any]):
 
 # ---- commit ------------------------------------------------------------------
 
-def _execute_effect(action: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+def _execute_effect(action: str, target: Dict[str, Any], payload: Dict[str, Any]) -> Dict[str, Any]:
     """Perform the (simulated) side effect for an approved action.
 
     Only ever called after: schema validation, evaluation lookup, and
@@ -115,7 +118,7 @@ def _execute_effect(action: str, payload: Dict[str, Any]) -> Dict[str, Any]:
     these into an actual draft store / CRM / mailer; here we record an
     auditable effect object rather than assume a live external system.
     """
-    return {"action": action, "applied": True, "payload": payload}
+    return {"action": action, "applied": True, "target": target, "payload": payload}
 
 
 def _handle_commit(raw: Dict[str, Any]):
@@ -144,11 +147,11 @@ def _handle_commit(raw: Dict[str, Any]):
             })
             continue
 
-        if matching["action"] != r.action or matching["proposalDigest"] != r.proposalDigest:
+        if matching["action"] != r.action or matching["inputDigest"] != r.inputDigest:
             outcomes.append({
                 "evaluationId": r.evaluationId, "dossierId": matching["dossierId"],
                 "callId": r.callId, "receiptId": r.receiptId,
-                "result": "rejected", "detail": "action/proposalDigest mismatch vs persisted proposal",
+                "result": "rejected", "detail": "action/inputDigest mismatch vs persisted proposal",
             })
             continue
 
@@ -173,7 +176,7 @@ def _handle_commit(raw: Dict[str, Any]):
             })
             continue
 
-        effect = _execute_effect(matching["action"], matching["payload"])
+        effect = _execute_effect(matching["action"], matching["target"], matching["payload"])
         store.put_receipt(r.evaluationId, r.callId, r.receiptId, r.verificationKey,
                            "executed", None, effect)
         outcomes.append({
