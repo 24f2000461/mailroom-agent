@@ -20,12 +20,14 @@ def _stub_decide(dossier_id, body, timeout_s=20.0, retries=2):
     if "ignore previous instructions" in text or "system:" in text:
         return {
             "action": "quarantine_item",
-            "payload": {"reason": "embedded instruction override attempt", "category": "prompt_injection"},
+            "target": {"category": "prompt_injection"},
+            "payload": {"reason": "embedded instruction override attempt"},
             "evidence": [{"quote": "ignore previous instructions", "location": "body"}],
         }
     return {
         "action": "create_draft",
-        "payload": {"draft_queue": "support", "subject": "Re: inquiry", "body": "Thanks, we'll follow up."},
+        "target": {"draft_queue": "support"},
+        "payload": {"subject": "Re: inquiry", "body": "Thanks, we'll follow up."},
         "evidence": [{"quote": body.get("text", "")[:40], "location": "body"}],
     }
 
@@ -132,7 +134,7 @@ def test_commit_flow_and_replay_and_mismatch():
         "receipts": [{
             "evaluationId": "e-commit-1", "dossierId": "d1",
             "callId": proposal["callId"], "receiptId": "r-1",
-            "action": proposal["action"], "proposalDigest": proposal["proposalDigest"],
+            "action": proposal["action"], "inputDigest": proposal["inputDigest"],
             "verificationKey": "grader-key-abc", "approved": True,
         }],
     }
@@ -147,7 +149,7 @@ def test_commit_flow_and_replay_and_mismatch():
 
     # tampered digest must be rejected
     bad_receipt = json.loads(json.dumps(good_receipt))
-    bad_receipt["receipts"][0]["proposalDigest"] = "0" * 64
+    bad_receipt["receipts"][0]["inputDigest"] = "0" * 64
     bad_receipt["receipts"][0]["callId"] = proposal["callId"] + "-tamper-check"
     c3 = client.post(URL, json=bad_receipt)
     assert c3.json()["outcomes"][0]["result"] == "rejected"
